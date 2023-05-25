@@ -9,10 +9,8 @@ require (
 	github.com/klauspost/compress v1.11.0 // indirect
 	github.com/prometheus/common v0.13.0
 	github.com/sirupsen/logrus v1.6.0
-	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/exp v0.0.0-20200917184745-18d7dbdd5567
-	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
-	golang.org/x/sys v0.0.0-20200918174421-af09f7315aff // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gopkg.in/yaml.v2 v2.3.0
 )
