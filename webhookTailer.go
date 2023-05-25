@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tailer
+package go_tailer
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	json "github.com/bitly/go-simplejson"
-	configuration "github.com/fstab/grok_exporter/config/v3"
-	"github.com/fstab/grok_exporter/tailer/fswatcher"
+	configuration "github.com/jdrews/go-tailer/config"
+	"github.com/jdrews/go-tailer/fswatcher"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
