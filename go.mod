@@ -3,7 +3,7 @@ module github.com/jdrews/go-tailer
 require (
 	github.com/Shopify/sarama v1.27.0
 	github.com/bitly/go-simplejson v0.5.0
-	github.com/sirupsen/logrus v1.6.0
+	github.com/sirupsen/logrus v1.9.2
 	golang.org/x/exp v0.0.0-20200917184745-18d7dbdd5567
 	gopkg.in/yaml.v2 v2.3.0
 )
@@ -19,7 +19,6 @@ require (
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/jcmturner/gofork v1.0.0 // indirect
 	github.com/klauspost/compress v1.11.0 // indirect
-	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/pierrec/lz4 v2.5.2+incompatible // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0 // indirect
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
