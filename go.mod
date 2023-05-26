@@ -5,7 +5,7 @@ require (
 	github.com/bitly/go-simplejson v0.5.0
 	github.com/sirupsen/logrus v1.9.2
 	golang.org/x/exp v0.0.0-20200917184745-18d7dbdd5567
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
