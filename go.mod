@@ -6,7 +6,7 @@ require (
 	github.com/prometheus/common v0.13.0
 	github.com/sirupsen/logrus v1.6.0
 	golang.org/x/exp v0.0.0-20200917184745-18d7dbdd5567
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
