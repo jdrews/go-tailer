@@ -16,8 +16,8 @@ package fswatcher
 
 import (
 	"fmt"
+	"github.com/fsnotify/fsnotify"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/winfsnotify"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,7 +26,7 @@ import (
 )
 
 type watcher struct {
-	winWatcher *winfsnotify.Watcher
+	winWatcher *fsnotify.Watcher
 }
 
 type fileWithReader struct {
@@ -65,7 +65,7 @@ func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
 }
 
 func initWatcher() (fswatcher, Error) {
-	winWatcher, err := winfsnotify.NewWatcher()
+	winWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "failed to initialize file system watcher")
 	}
@@ -82,7 +82,7 @@ func (w *watcher) watchDir(path string) (*Dir, Error) {
 	if Err != nil {
 		return nil, Err
 	}
-	err = w.winWatcher.Watch(path)
+	err = w.winWatcher.Add(path)
 	if err != nil {
 		return nil, NewErrorf(NotSpecified, err, "%v: failed to watch directory", path)
 	}
@@ -99,7 +99,7 @@ func (w *watcher) watchFile(_ fileMeta) Error {
 }
 
 func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldLogger) Error {
-	event, ok := fsevent.(*winfsnotify.Event)
+	event, ok := fsevent.(fsnotify.Event)
 	if !ok {
 		return NewErrorf(NotSpecified, nil, "received a file system event of unknown type %T", event)
 	}
@@ -109,7 +109,7 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
 	log.WithField("directory", dir.path).Debugf("received event: %v", event)
-	if event.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
+	if event.Has(fsnotify.Write) {
 		file, ok := t.watchedFiles[filepath.Join(dir.path, fileName)]
 		if !ok {
 			return nil // unrelated file was modified
@@ -134,7 +134,7 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 			return Err
 		}
 	}
-	if event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE || event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE || event.Mask&winfsnotify.FS_MOVED_TO == winfsnotify.FS_MOVED_TO {
+	if event.Has(fsnotify.Rename) || event.Has(fsnotify.Create) || event.Has(fsnotify.Remove) {
 		// There are a lot of corner cases here:
 		// * a file is renamed, but still matches the pattern so we continue watching it (MOVED_FROM followed by MOVED_TO)
 		// * a file is created overwriting an existing file

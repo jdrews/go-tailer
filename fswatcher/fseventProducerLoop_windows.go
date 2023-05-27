@@ -14,7 +14,9 @@
 
 package fswatcher
 
-import "golang.org/x/exp/winfsnotify"
+import (
+	"github.com/fsnotify/fsnotify"
+)
 
 type winwatcherloop struct {
 	events chan fsevent
@@ -34,7 +36,7 @@ func (l *winwatcherloop) Close() {
 	close(l.done)
 }
 
-func runWinWatcherLoop(w *winfsnotify.Watcher) *winwatcherloop {
+func runWinWatcherLoop(w *fsnotify.Watcher) *winwatcherloop {
 	var (
 		events = make(chan fsevent)
 		errors = make(chan Error)
@@ -43,14 +45,14 @@ func runWinWatcherLoop(w *winfsnotify.Watcher) *winwatcherloop {
 	go func() {
 		for {
 			select {
-			case event := <-w.Event:
+			case event := <-w.Events:
 				select {
 				case events <- event:
 				case <-done:
 					w.Close()
 					return
 				}
-			case err := <-w.Error:
+			case err := <-w.Errors:
 				select {
 				case errors <- NewError(NotSpecified, err, ""):
 				case <-done:
