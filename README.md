@@ -35,7 +35,7 @@ tailer, err := fswatcher.RunFileTailer([]glob.Glob{parsedGlob}, false, true, log
 // listen to the go channel for captured lines and do something with them
 for line := range tailer.Lines() {
     // line.Line contains the line contents
-    // line.File contains the name of hte file that the line was grabbed from
+    // line.File contains the name of the file that the line was grabbed from
     DoSomethingWithLine(line.File, line.Line)
 }
 ```
@@ -60,5 +60,3 @@ Along with reading from files, go-tailer can read from other sources as well.
 * Tail stdin (console/shell/standard input): [RunStdinTailer](https://github.com/jdrews/go-tailer/blob/main/stdinTailer.go)
 * Tail a Kafka stream: [RunKafkaTailer](https://github.com/jdrews/go-tailer/blob/main/kafkaTailer.go)
 * Tail a webhook: [WebhookTailer](https://github.com/jdrews/go-tailer/blob/main/webhookTailer.go)
-
-## 
