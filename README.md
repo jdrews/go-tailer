@@ -62,3 +62,9 @@ Along with reading from files, go-tailer can read from other sources as well.
 * Tail stdin (console/shell/standard input): [RunStdinTailer](https://github.com/jdrews/go-tailer/blob/main/stdinTailer.go)
 * Tail a Kafka stream: [RunKafkaTailer](https://github.com/jdrews/go-tailer/blob/main/kafkaTailer.go)
 * Tail a webhook: [WebhookTailer](https://github.com/jdrews/go-tailer/blob/main/webhookTailer.go)
+
+# Frequently Asked Questions (FAQ)
+### Why was the tailer module forked from [fstab/grok_exporter](https://github.com/fstab/grok_exporter) and moved here? 
+grok_exporter had not been updated for 3-4 years and seems to be abandoned by [@fstab](https://github.com/fstab). It also was suffering [from quite a few security issues (CVEs) ](https://deps.dev/go/github.com%2Ffstab%2Fgrok_exporter/v0.2.8), which I've fixed. Additionally, the tailer module was not well known, had poor documentation, and I thought a separate repo would shed some well deserved light on it.   
+   
+I'd welcome making upstream patches to [fstab/grok_exporter](https://github.com/fstab/grok_exporter) if/when it becomes active again! 
