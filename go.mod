@@ -4,7 +4,7 @@ require (
 	github.com/Shopify/sarama v1.38.1
 	github.com/bitly/go-simplejson v0.5.0
 	github.com/fsnotify/fsnotify v1.6.0
-	github.com/sirupsen/logrus v1.9.2
+	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/yaml.v2 v2.4.0
 )
 
