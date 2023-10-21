@@ -5,7 +5,7 @@ import (
 	"github.com/jdrews/go-tailer/fswatcher"
 	"sync"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	configuration "github.com/jdrews/go-tailer/config"
 	"github.com/sirupsen/logrus"
 )
