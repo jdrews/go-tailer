@@ -1,0 +1,15 @@
+release:
+  target_commitish: '{{ .Commit }}'
+builds:
+  - skip: true
+
+archives:
+  - format: tar.gz
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
