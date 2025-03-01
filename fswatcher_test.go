@@ -561,6 +561,10 @@ func createFromTemp(t *testing.T, ctx *context, from string) {
 	if err != nil {
 		fatalf(t, ctx, "failed to close temporary log file %v: %v", tmpFile.Name(), err.Error())
 	}
+
+	// Add small delay to let filesystem events settle
+	time.Sleep(500 * time.Millisecond)
+
 	err = os.Rename(tmpFilename, fromPath)
 	if err != nil {
 		fatalf(t, ctx, "Failed to mv \"%v\" \"%v\": %v", tmpFilename, from, err.Error())
