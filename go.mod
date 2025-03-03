@@ -1,7 +1,7 @@
 module github.com/jdrews/go-tailer
 
 require (
-	github.com/IBM/sarama v1.45.0
+	github.com/IBM/sarama v1.45.1
 	github.com/bitly/go-simplejson v0.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/sirupsen/logrus v1.9.3
