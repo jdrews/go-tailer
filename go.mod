@@ -4,7 +4,7 @@ require (
 	github.com/IBM/sarama v1.46.3
 	github.com/bitly/go-simplejson v0.5.1
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	gopkg.in/yaml.v2 v2.4.0
 )
 
