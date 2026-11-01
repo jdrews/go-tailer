@@ -642,7 +642,7 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 }
 
 func expect(t *testing.T, ctx *context, line string, file string) {
-	actualLine, err := ctx.linesFromTailer.nextLine(filepath.Join(ctx.basedir, file), 500*time.Millisecond)
+	actualLine, err := ctx.linesFromTailer.nextLine(filepath.Join(ctx.basedir, file))
 	if err != nil {
 		fatalf(t, ctx, "%v: failed to read line %q: %v", file, line, err)
 	}
@@ -1001,26 +1001,25 @@ type linesFromTailer struct {
 
 // Reads the next line for a specific file.
 // If the tailer produces lines for other files they are buffered.
-// This call may take longer than timeout if we keep reading lines from another file
-func (l *linesFromTailer) nextLine(file string, timeout time.Duration) (string, error) {
+// This call may take longer than 5 seconds if we keep reading lines from other files.
+func (l *linesFromTailer) nextLine(file string) (string, error) {
 	if len(l.buf[file]) > 0 {
 		result := l.buf[file][0]
 		l.buf[file] = l.buf[file][1:]
 		return result, nil
-	} else {
-		for {
-			select {
-			case line := <-l.tailer.Lines():
-				if line.File == file {
-					return line.Line, nil
-				} else {
-					l.buf[line.File] = append(l.buf[line.File], line.Line)
-				}
-			case err := <-l.tailer.Errors():
-				return "", err
-			case <-time.After(5 * time.Second):
-				return "", fmt.Errorf("timeout after %v", timeout)
+	}
+	for {
+		select {
+		case line := <-l.tailer.Lines():
+			if line.File == file {
+				return line.Line, nil
+			} else {
+				l.buf[line.File] = append(l.buf[line.File], line.Line)
 			}
+		case err := <-l.tailer.Errors():
+			return "", err
+		case <-time.After(5 * time.Second):
+			return "", fmt.Errorf("timeout after 5s waiting for a line from %q", file)
 		}
 	}
 }

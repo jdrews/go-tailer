@@ -67,16 +67,38 @@ func TestLineBufferSequential_withMetrics(t *testing.T) {
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
-	if !metric.startCalled {
+	if !metric.StartCalled() {
 		t.Error("metric.Start() not called.")
 	}
-	//TODO: This causes the test to fail, but otherwise it meets the peak load as expected. Need to investigate
-	//if !metric.stopCalled {
-	//	t.Error("metric.Stop() not called.")
-	//}
-	// The peak load should be 1 or two less than nTestLines, depending on how quick
-	// the consumer loop started reading
-	fmt.Printf("peak load (should be 1 or 2 less than %v): %v\n", nTestLines, metric.peakLoad)
+	// metric.Stop() is called by the producer goroutine after it observes the closed
+	// source channel. buffered.Close() does not wait for that, so we poll for it.
+	if !waitFor(metric.StopCalled) {
+		t.Error("metric.Stop() not called.")
+	}
+	// The buffer is filled before the test starts reading, so the peak load should be
+	// nTestLines (at most a couple of lines less, depending on how quick the consumer
+	// loop started reading).
+	peak := metric.PeakLoad()
+	if peak < nTestLines-2 || peak > nTestLines {
+		t.Errorf("peak load = %v, expected between %v and %v", peak, nTestLines-2, nTestLines)
+	}
+	fmt.Printf("peak load (should be between %v and %v): %v\n", nTestLines-2, nTestLines, peak)
+}
+
+// waitFor polls condition every 10ms for up to 2 seconds.
+// It is used to wait for effects that happen in background goroutines
+// (e.g. metric.Stop()) which are not synchronized with Close().
+func waitFor(condition func() bool) bool {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if condition() {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // TODO: As we separated lineBuffer and the metrics, this test is now partially copy-and-paste from lineBuffer_test
@@ -112,8 +134,6 @@ func TestLineBufferParallel_withMetrics(t *testing.T) {
 	}()
 	wg.Add(2)
 	wg.Wait()
-	// wait until peak load is observed (buffered tailer observes the max of each 1 Sec interval)
-	time.Sleep(1100 * time.Millisecond)
 	buffered.Close()
 	_, stillOpen := <-buffered.Lines()
 	if stillOpen {
@@ -123,27 +143,44 @@ func TestLineBufferParallel_withMetrics(t *testing.T) {
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
-	if !metric.startCalled {
-		t.Error("metric.Register() not called.")
+	if !metric.StartCalled() {
+		t.Error("metric.Start() not called.")
 	}
-	if !metric.stopCalled {
-		t.Error("metric.Unregister() not called.")
+	// metric.Stop() is called by the producer goroutine after it observes the closed
+	// source channel. buffered.Close() does not wait for that, so we poll for it.
+	if !waitFor(metric.StopCalled) {
+		t.Error("metric.Stop() not called.")
 	}
 	// Should be much less than nTestLines, because consumer and producer work in parallel.
-	fmt.Printf("peak load (should be an order of magnitude less than %v): %v\n", nTestLines, metric.peakLoad)
+	// The bound is generous because under the race detector the consumer goroutine is
+	// slowed down significantly (observed peaks of ~12% of nTestLines).
+	peak := metric.PeakLoad()
+	if peak >= nTestLines/4 {
+		t.Errorf("peak load = %v, expected less than %v", peak, nTestLines/4)
+	}
+	fmt.Printf("peak load (should be much less than %v): %v\n", nTestLines, peak)
 }
 
+// peakLoadMetric is a test double for BufferLoadMetric.
+// Start/Inc are called by the buffered tailer's producer goroutine and
+// Dec/Stop by other goroutines, so all state is guarded by mu.
 type peakLoadMetric struct {
-	startCalled, stopCalled bool
-	peakLoad                int64
-	currentLoad             int64
+	mu          sync.Mutex
+	startCalled bool
+	stopCalled  bool
+	peakLoad    int64
+	currentLoad int64
 }
 
 func (m *peakLoadMetric) Start() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.startCalled = true
 }
 
 func (m *peakLoadMetric) Inc() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.currentLoad++
 	if m.peakLoad < m.currentLoad {
 		m.peakLoad = m.currentLoad
@@ -151,13 +188,39 @@ func (m *peakLoadMetric) Inc() {
 }
 
 func (m *peakLoadMetric) Dec() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.currentLoad--
 }
 
 func (m *peakLoadMetric) Set(value int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.currentLoad = value
 }
 
 func (m *peakLoadMetric) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.stopCalled = true
+}
+
+// Accessors for the test goroutine, so reads are race-free.
+
+func (m *peakLoadMetric) StartCalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.startCalled
+}
+
+func (m *peakLoadMetric) StopCalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stopCalled
+}
+
+func (m *peakLoadMetric) PeakLoad() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.peakLoad
 }
