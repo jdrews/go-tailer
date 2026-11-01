@@ -98,7 +98,7 @@ func (f *File) SameFile(other *File) bool {
 	return f.fileIndexLow == other.fileIndexLow && f.fileIndexHigh == other.fileIndexHigh
 }
 
-func (f *File) Seek(offset int64, whence int) (int64, Error) {
+func (f *File) Seek(offset int64, whence int) (int64, error) {
 	var (
 		file *os.File
 		Err  Error
@@ -226,10 +226,10 @@ func openWithBackoff(fileName string) (*os.File, syscall.ByHandleFileInformation
 func (f *File) reopen() (*os.File, Error) {
 	file, info, Err := openWithBackoff(f.Name())
 	if Err != nil && Err.Type() == FileNotFound {
-		return nil, NewErrorf(WinFileRemoved, Err.Cause(), f.Name())
+		return nil, NewError(WinFileRemoved, Err.Cause(), f.Name())
 	}
 	if f.fileIndexLow != info.FileIndexLow || f.fileIndexHigh != info.FileIndexHigh {
-		return nil, NewErrorf(WinFileRemoved, nil, f.Name())
+		return nil, NewError(WinFileRemoved, nil, f.Name())
 	}
 	return file, Err
 }

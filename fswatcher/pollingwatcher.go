@@ -47,9 +47,9 @@ func (w *pollingWatcher) processEvent(t *fileTailer, fsevent fsevent, log logrus
 			return NewErrorf(NotSpecified, err, "%v: seek() or stat() failed", file.file.Name())
 		}
 		if truncated {
-			_, err = file.file.Seek(0, io.SeekStart)
-			if err != nil {
-				return NewErrorf(NotSpecified, err, "%v: seek() failed", file.file.Name())
+			_, seekErr := file.file.Seek(0, io.SeekStart)
+			if seekErr != nil {
+				return NewErrorf(NotSpecified, seekErr, "%v: seek() failed", file.file.Name())
 			}
 			file.reader.Clear()
 		}
