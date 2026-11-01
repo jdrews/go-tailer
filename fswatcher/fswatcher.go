@@ -15,7 +15,6 @@
 package fswatcher
 
 import (
-	"fmt"
 	"github.com/jdrews/go-tailer/glob"
 	"github.com/sirupsen/logrus"
 	"io"
@@ -205,7 +204,7 @@ func (t *fileTailer) shutdown() {
 	logger := logrus.New()
 
 	warnf := func(format string, args ...interface{}) {
-		logger.Warnf("error while shutting down the file system watcher: %v", fmt.Sprintf(format, args))
+		logger.Warnf("error while shutting down the file system watcher: "+format, args...)
 	}
 
 	for _, dir := range t.watchedDirs {
