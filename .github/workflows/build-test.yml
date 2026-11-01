@@ -8,8 +8,46 @@ on:
 
 jobs:
 
-  build-test:
+  # Compiles the platform-specific files (*_windows.go, *_darwin.go) that are
+  # never built by a single-OS test run. A dependabot bump that breaks one of
+  # these files must fail here.
+  cross-compile:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Golang with cache
+        uses: magnetikonline/action-golang-cache@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Cross-compile (windows/amd64)
+        run: GOOS=windows GOARCH=amd64 go build ./...
+
+      - name: Cross-compile (darwin/arm64)
+        run: GOOS=darwin GOARCH=arm64 go build ./...
+
+      - name: Cross-compile (darwin/amd64)
+        run: GOOS=darwin GOARCH=amd64 go build ./...
+
+  build-test:
+    needs: cross-compile
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Keep running the other OSes when one fails, so a single flake does not
+      # hide the results of the remaining platforms.
+      fail-fast: false
+      matrix:
+        include:
+          # -race only on Linux: the race detector is not available on all
+          # supported platforms, and the Linux suite exercises the same code
+          # paths (inotify, polling, line buffer, webhook) as the other OSes.
+          - os: ubuntu-latest
+            test: go test -race ./...
+          - os: windows-latest
+            test: go test ./...
+          - os: macos-latest
+            test: go test ./...
     steps:
       - uses: actions/checkout@v3
 
@@ -21,5 +59,8 @@ jobs:
       - name: Build
         run: go build -v ./...
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Test
-        run: go test -v ./...
+        run: ${{ matrix.test }}
