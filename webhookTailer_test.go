@@ -31,7 +31,7 @@ func TestWebhookTextSingle(t *testing.T) {
 	}
 
 	message := "2016-04-18 09:33:27 H=(85.214.241.101) [114.37.190.56] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted"
-	fmt.Printf("Sending Payload: %v", message)
+	t.Logf("Sending Payload: %v", message)
 	lines := WebhookProcessBody(c, []byte(message))
 	if len(lines) != 1 {
 		t.Fatal("Expected 1 line processed")
@@ -56,7 +56,7 @@ func TestWebhookTextBulk(t *testing.T) {
 		"2016-04-18 19:16:30 H=(85.214.241.101) [114.24.5.12] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted",
 	}
 	payload := strings.Join(messages, c.WebhookTextBulkSeparator)
-	fmt.Printf("Sending Payload: %v", payload)
+	t.Logf("Sending Payload: %v", payload)
 	lines := WebhookProcessBody(c, []byte(payload))
 	if len(lines) != len(messages) {
 		t.Fatal("Expected number of lines to equal number of messages")
@@ -84,7 +84,7 @@ func TestWebhookTextBulkNegative(t *testing.T) {
 		"2016-04-18 19:16:30 H=(85.214.241.101) [114.24.5.12] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted",
 	}
 	payload := strings.Join(messages, "\t\t")
-	fmt.Printf("Sending Payload: %v", payload)
+	t.Logf("Sending Payload: %v", payload)
 	lines := WebhookProcessBody(c, []byte(payload))
 	if len(lines) == len(messages) {
 		t.Fatal("Expected number of lines to equal number of messages")
@@ -105,7 +105,7 @@ func TestWebhookJsonSingle(t *testing.T) {
 
 	message := "2016-04-18 09:33:27 H=(85.214.241.101) [114.37.190.56] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted"
 	s := createJsonBlob(message)
-	fmt.Printf("Sending Payload: %v", s)
+	t.Logf("Sending Payload: %v", s)
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != 1 {
 		t.Fatal("Expected 1 line processed")
@@ -127,7 +127,7 @@ func TestWebhookJsonSingleNegativeWebhookJsonSelector(t *testing.T) {
 
 	message := "2016-04-18 09:33:27 H=(85.214.241.101) [114.37.190.56] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted"
 	s := createJsonBlob(message)
-	fmt.Printf("Sending Payload: %v", s)
+	t.Logf("Sending Payload: %v", s)
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != 0 {
 		t.Fatal("Expected 1 line processed")
@@ -146,7 +146,7 @@ func TestWebhookJsonSingleNegativeMalformedJson(t *testing.T) {
 
 	message := "2016-04-18 09:33:27 H=(85.214.241.101) [114.37.190.56] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted"
 	s := createMalformedJsonBlob(message)
-	fmt.Printf("Sending Payload: %v", s)
+	t.Logf("Sending Payload: %v", s)
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != 0 {
 		t.Fatal("Expected 0 lines processed")
@@ -177,7 +177,7 @@ func TestWebhookJsonBulk(t *testing.T) {
 		blobs = append(blobs, createJsonBlob(message))
 	}
 	s := "[\n" + strings.Join(blobs, ",\n") + "\n]"
-	fmt.Printf("Sending Payload: %v", s)
+	t.Logf("Sending Payload: %v", s)
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != len(messages) {
 		t.Fatal("Expected number of lines to equal number of messages")
@@ -213,7 +213,7 @@ func TestWebhookJsonLines(t *testing.T) {
 		blobs = append(blobs, strings.Replace(createJsonBlob(message), "\n", " ", -1))
 	}
 	s := strings.Join(blobs, "\n")
-	fmt.Printf("Sending Payload: %v", s)
+	t.Logf("Sending Payload: %v", s)
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != len(messages) {
 		t.Fatal("Expected number of lines to equal number of messages")
@@ -249,7 +249,7 @@ func TestWebhookJsonBulkNegativeMalformedJson(t *testing.T) {
 		blobs = append(blobs, createMalformedJsonBlob(message))
 	}
 	s := "[\n" + strings.Join(blobs, ",\n") + "\n]"
-	fmt.Printf("Sending Payload: %v", s)
+	t.Logf("Sending Payload: %v", s)
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != 0 {
 		t.Fatal("Expected 0 lines processed")

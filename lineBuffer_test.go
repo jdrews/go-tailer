@@ -99,26 +99,27 @@ func TestLineBufferClear(t *testing.T) {
 
 func TestLineBufferBlockingPop(t *testing.T) {
 	buf := NewLineBuffer()
-	done := make(chan struct{})
+	// The popped line is reported via a channel, because t.Fatal() must not be
+	// called from a non-test goroutine.
+	result := make(chan string, 1)
 	go func() {
 		l := buf.BlockingPop()
-		if l.Line != "hello" {
-			t.Fatalf("expected to read \"hello\" but got %q.", l.Line)
-		}
-		close(done)
+		result <- l.Line
 	}()
 	select {
-	case <-done:
-		t.Fatal("BlockingPop() returned unexpectedly")
+	case line := <-result:
+		t.Fatalf("BlockingPop() returned unexpectedly: %q", line)
 	case <-time.After(200 * time.Millisecond):
-		// ok
+		// ok, BlockingPop() is still blocking
 	}
 	buf.Push(&fswatcher.Line{Line: "hello", File: "/tmp/hello.log"})
 	select {
-	case <-done:
-		// ok
+	case line := <-result:
+		if line != "hello" {
+			t.Fatalf("expected to read \"hello\" but got %q.", line)
+		}
 	case <-time.After(200 * time.Millisecond):
-		t.Fatal("BlockingPop() not interrupted by Close()")
+		t.Fatal("BlockingPop() did not return after Push()")
 	}
 }
 
