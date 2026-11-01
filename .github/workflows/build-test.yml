@@ -63,4 +63,9 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: ${{ matrix.test }}
+        # The test command is passed via an environment variable instead of
+        # expanding a context expression in run:, to avoid the GitHub Actions
+        # script injection pattern (GH24).
+        env:
+          TEST_CMD: ${{ matrix.test }}
+        run: $TEST_CMD
