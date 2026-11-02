@@ -1,18 +1,34 @@
+// Copyright 2020-2026 The grok_exporter Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package go_tailer
 
 import (
 	ctx "context"
-	"github.com/jdrews/go-tailer/fswatcher"
-	"sync"
-
+	"fmt"
 	"github.com/IBM/sarama"
 	configuration "github.com/jdrews/go-tailer/config"
+	"github.com/jdrews/go-tailer/fswatcher"
 	"github.com/sirupsen/logrus"
+	"sync"
 )
 
 type KafkaTailer struct {
 	lines  chan *fswatcher.Line
 	errors chan fswatcher.Error
+	cancel ctx.CancelFunc
+	done   chan struct{} // closed when the consumer goroutine has fully exited
 }
 
 type consumer struct {
@@ -21,17 +37,22 @@ type consumer struct {
 	errorChan chan fswatcher.Error
 }
 
-func (t KafkaTailer) Lines() chan *fswatcher.Line {
+func (t *KafkaTailer) Lines() chan *fswatcher.Line {
 	return t.lines
 }
 
-func (t KafkaTailer) Errors() chan fswatcher.Error {
+func (t *KafkaTailer) Errors() chan fswatcher.Error {
 	return t.errors
 }
 
-func (t KafkaTailer) Close() {
-	logrus.Info("Close method called")
-
+// Close cancels the consumer, waits for the consumer goroutine to exit, and
+// then closes the Lines()/Errors() channels. It is safe to call once the
+// tailer has already reported a configuration error.
+func (t *KafkaTailer) Close() {
+	t.cancel()
+	<-t.done
+	close(t.lines)
+	close(t.errors)
 }
 
 // RunKafkaTailer runs the kafka tailer
@@ -39,21 +60,40 @@ func RunKafkaTailer(cfg *configuration.InputConfig) fswatcher.FileTailer {
 	lineChan := make(chan *fswatcher.Line)
 	errorChan := make(chan fswatcher.Error)
 
+	kctx, cancel := ctx.WithCancel(ctx.Background())
 	tailer := &KafkaTailer{
 		lines:  lineChan,
 		errors: errorChan,
+		cancel: cancel,
+		done:   make(chan struct{}),
 	}
 
-	go initKafkaConsumer(lineChan, errorChan, cfg)
+	go initKafkaConsumer(tailer, kctx, cfg)
 
-	return *tailer
+	return tailer
 }
 
-func initKafkaConsumer(lineChan chan *fswatcher.Line, errorChan chan fswatcher.Error, cfg *configuration.InputConfig) {
+// initKafkaConsumer runs the sarama consumer group. Configuration errors are
+// reported on the Errors() channel and never panic: a bad config string must
+// not be able to kill the process.
+func initKafkaConsumer(tailer *KafkaTailer, kctx ctx.Context, cfg *configuration.InputConfig) {
+	defer close(tailer.done)
+
+	errorChan := tailer.errors
+	// Error sends are guarded by the context, following the pattern used in
+	// the file tailer: if we are shutting down and the consumer is not
+	// reading the Errors() channel, we must not block the shutdown.
+	sendError := func(cause error, msg string) {
+		select {
+		case errorChan <- fswatcher.NewError(fswatcher.NotSpecified, cause, msg):
+		case <-kctx.Done():
+		}
+	}
 
 	version, err := sarama.ParseKafkaVersion(cfg.KafkaVersion)
 	if err != nil {
-		logrus.Panicf("[Kafka] Error parsing Kafka version: %v", err)
+		sendError(err, "[Kafka] Error parsing Kafka version")
+		return
 	}
 
 	/**
@@ -63,7 +103,7 @@ func initKafkaConsumer(lineChan chan *fswatcher.Line, errorChan chan fswatcher.E
 
 	consumer := consumer{
 		ready:     make(chan bool),
-		lineChan:  lineChan,
+		lineChan:  tailer.lines,
 		errorChan: errorChan,
 	}
 
@@ -78,7 +118,8 @@ func initKafkaConsumer(lineChan chan *fswatcher.Line, errorChan chan fswatcher.E
 	case "range":
 		kafkaConfig.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
 	default:
-		consumer.errorChan <- fswatcher.NewError(fswatcher.NotSpecified, err, "[Kafka] Unrecognized consumer group partition assignor!")
+		sendError(fmt.Errorf("unrecognized consumer group partition assignor %q", cfg.KafkaPartitionAssignor), "[Kafka] invalid configuration")
+		return
 	}
 
 	if cfg.KafkaConsumeFromOldest {
@@ -89,10 +130,10 @@ func initKafkaConsumer(lineChan chan *fswatcher.Line, errorChan chan fswatcher.E
 	 * Setup a new Sarama consumer group
 	 */
 
-	ctx, cancel := ctx.WithCancel(ctx.Background())
 	client, err := sarama.NewConsumerGroup(cfg.KafkaBrokers, cfg.KafkaConsumerGroupName, kafkaConfig)
 	if err != nil {
-		consumer.errorChan <- fswatcher.NewError(fswatcher.NotSpecified, err, "[Kafka] Error creating client")
+		sendError(err, "[Kafka] Error creating client")
+		return
 	}
 
 	wg := &sync.WaitGroup{}
@@ -103,11 +144,11 @@ func initKafkaConsumer(lineChan chan *fswatcher.Line, errorChan chan fswatcher.E
 			// `Consume` should be called inside an infinite loop, when a
 			// server-side rebalance happens, the consumer session will need to be
 			// recreated to get the new claims
-			if err := client.Consume(ctx, cfg.KafkaTopics, &consumer); err != nil {
-				consumer.errorChan <- fswatcher.NewError(fswatcher.NotSpecified, err, "[Kafka] Error from consumer")
+			if err := client.Consume(kctx, cfg.KafkaTopics, &consumer); err != nil {
+				sendError(err, "[Kafka] Error from consumer")
 			}
 			// check if context was cancelled, signaling that the consumer should stop
-			if ctx.Err() != nil {
+			if kctx.Err() != nil {
 				logrus.Infof("[Kafka] Consumer %s goroutine exiting.", cfg.KafkaConsumerGroupName)
 				return
 			}
@@ -115,24 +156,25 @@ func initKafkaConsumer(lineChan chan *fswatcher.Line, errorChan chan fswatcher.E
 		}
 	}()
 
-	<-consumer.ready // Await till the consumer has been set up
-	logrus.Infof("[Kafka] Consumer %s active.", cfg.KafkaConsumerGroupName)
-
+	// Await till the consumer has been set up. This must be interruptible: if
+	// the broker is unreachable, Setup is never called and we must not block
+	// forever (Close() cancels the context, which unwinds the consume loop).
 	select {
-	case <-ctx.Done():
-		logrus.Info("[Kafka] Consumer terminating: context cancelled")
+	case <-consumer.ready:
+		logrus.Infof("[Kafka] Consumer %s active.", cfg.KafkaConsumerGroupName)
+	case <-kctx.Done():
 	}
 
-	cancel()
+	<-kctx.Done()
+	logrus.Info("[Kafka] Consumer terminating: context cancelled")
+
 	wg.Wait()
 
-	if err = client.Close(); err != nil {
-		consumer.errorChan <- fswatcher.NewError(fswatcher.NotSpecified, err, "[Kafka] Error closing client")
-		return
+	if err := client.Close(); err != nil {
+		sendError(err, "[Kafka] Error closing client")
 	}
 
 	logrus.Info("[Kafka] Client has been closed")
-
 }
 
 // Setup is run at the beginning of a new session, before ConsumeClaim
