@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'New tag name'
+        description: 'New tag name (e.g. v1.3.0)'
         required: true
 
 permissions:
@@ -13,28 +13,50 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    env:
+      # The tag is passed via environment variables (never expanded directly
+      # in a run: step) to avoid the GitHub Actions script injection pattern.
+      NEW_TAG: ${{ github.event.inputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
+      - name: Validate tag
+        run: |
+          if [[ ! "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag must be semantic versioning, e.g. v1.3.0 (got: $NEW_TAG)"
+            exit 1
+          fi
+          if git rev-parse --verify "refs/tags/$NEW_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $NEW_TAG already exists"
+            exit 1
+          fi
+
       - name: Tag the release
-        run: git tag ${{ github.event.inputs.tag }}
+        run: git tag "$NEW_TAG"
 
       - name: Setup Golang with cache
-        uses: magnetikonline/action-golang-cache@v4
+        # Official action with built-in module caching; pinned to a full
+        # commit SHA, not a mutable tag.
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
 
       - name: Build
         run: go build -v ./...
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Test
-        run: go test -v ./...
+        run: go test -race ./...
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           distribution: goreleaser
           version: latest
