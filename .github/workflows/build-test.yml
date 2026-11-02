@@ -17,9 +17,12 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Setup Golang with cache
-        uses: magnetikonline/action-golang-cache@v4
+        # Official action with built-in module caching (cache: golang); pinned
+        # to a full commit SHA, not a mutable tag.
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
+          cache: golang
 
       - name: Cross-compile (windows/amd64)
         run: GOOS=windows GOARCH=amd64 go build ./...
@@ -52,9 +55,12 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Setup Golang with cache
-        uses: magnetikonline/action-golang-cache@v4
+        # Official action with built-in module caching (cache: golang); pinned
+        # to a full commit SHA, not a mutable tag.
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
+          cache: golang
 
       - name: Build
         run: go build -v ./...
