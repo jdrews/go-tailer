@@ -123,6 +123,10 @@ const tests = `
   - [expect, inner line 3, outer/inner/logfile.log]
 
 - name: watch after logrotate
+  # The tailer watches logdir/* and the rotation moves logdir/logfile.log to
+  # logdir/logfile.log.1, so the rotated file is still watched. Depending on the
+  # logrotate config its lines are read again (cp) or not (mv).
+  ignore_unexpected_lines: true
   commands:
   - [mkdir, logdir]
   - [log, line 1, logdir/logfile.log]
@@ -167,6 +171,10 @@ type testConfigType struct {
 	Name         string
 	ParamFilters map[string][]string `yaml:"param_filters"`
 	Commands     [][]string
+	// When true, closeTailer() does not fail on lines it has not expected.
+	// Used by tests where, depending on the logrotate config, rotated lines
+	// may legitimately be read again.
+	IgnoreUnexpectedLines bool `yaml:"ignore_unexpected_lines"`
 }
 
 func TestAll(t *testing.T) {
@@ -182,7 +190,7 @@ func TestAll(t *testing.T) {
 			for _, logrotateCfg := range []logrotateConfig{_create, _nocreate, _create_from_temp} {
 				for _, logrotateMvCfg := range []logrotateMoveConfig{mv, cp, rm} {
 					if !skip(testConfig, loggerCfg, logrotateCfg, logrotateMvCfg) {
-						runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
+						runTest(t, testConfig, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg)
 					}
 				}
 			}
@@ -192,7 +200,7 @@ func TestAll(t *testing.T) {
 					for _, logrotateMvCfg := range []logrotateMoveConfig{none} {
 						// The logroatate configs copytruncate and copy require logroatateMoveConfig == none.
 						if !skip(testConfig, loggerCfg, logrotateCfg, logrotateMvCfg) {
-							runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
+							runTest(t, testConfig, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg)
 						}
 					}
 				}
@@ -208,6 +216,9 @@ func TestAll(t *testing.T) {
 // * directories with the xattr com.apple.FinderInfo (like everything in /tmp) are hidden
 // In order to test this, we must create a log file somewhere outside of /tmp, so we use $HOME.
 func TestVisibleInOSXFinder(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the NOTE_ATTRIB events and Finder xattr behavior this test checks are macOS-specific")
+	}
 	ctx := setUp(t, "visible in macOS finder", closeFileAfterEachLine, fseventTailer, _nocreate, mv)
 
 	// replace ctx.basedir with a directory in $HOME
@@ -234,18 +245,21 @@ func TestVisibleInOSXFinder(t *testing.T) {
 		{"log", "line 3", "test.log"},
 		{"expect", "line 3", "test.log"},
 	}
-	executeCommands(t, ctx, test)
+	executeCommands(t, ctx, test, false)
 }
 
 // test the "fail_on_missing_logfile: false" configuration
 func TestFileMissingOnStartup(t *testing.T) {
-	test := [][]string{
-		{"start file tailer", "fail_on_missing_logfile=false", "test.log"},
-		{"sleep", "1000"},
-		{"log", "line 1", "test.log"},
-		{"expect", "line 1", "test.log"},
+	test := testConfigType{
+		Name: "fail on missing startup",
+		Commands: [][]string{
+			{"start file tailer", "fail_on_missing_logfile=false", "test.log"},
+			{"sleep", "1000"},
+			{"log", "line 1", "test.log"},
+			{"expect", "line 1", "test.log"},
+		},
 	}
-	runTest(t, "fail on missing startup", closeFileAfterEachLine, fseventTailer, _nocreate, mv, test)
+	runTest(t, test, closeFileAfterEachLine, fseventTailer, _nocreate, mv)
 }
 
 func skip(config testConfigType, loggerCfg loggerConfig, logrotateCfg logrotateConfig, logrotateMvCfg logrotateMoveConfig) bool {
@@ -270,28 +284,23 @@ func containsAsString(item fmt.Stringer, slice []string) bool {
 	return false
 }
 
-func runTest(t *testing.T, testName string, loggerCfg loggerConfig, tailerCfg fileTailerConfig, logrotateCfg logrotateConfig, logrotateMvCfg logrotateMoveConfig, cmds [][]string) {
+func runTest(t *testing.T, testConfig testConfigType, loggerCfg loggerConfig, tailerCfg fileTailerConfig, logrotateCfg logrotateConfig, logrotateMvCfg logrotateMoveConfig) {
 	params := []fmt.Stringer{loggerCfg, tailerCfg, logrotateCfg, logrotateMvCfg}
 	join(params, ",")
-	t.Run(testName+"("+join(params, ",")+")", func(t *testing.T) {
+	t.Run(testConfig.Name+"("+join(params, ",")+")", func(t *testing.T) {
 		fmt.Println()
-		ctx := setUp(t, testName, loggerCfg, tailerCfg, logrotateCfg, logrotateMvCfg)
+		ctx := setUp(t, testConfig.Name, loggerCfg, tailerCfg, logrotateCfg, logrotateMvCfg)
 		defer tearDown(t, ctx)
-		executeCommands(t, ctx, cmds)
+		executeCommands(t, ctx, testConfig.Commands, testConfig.IgnoreUnexpectedLines)
 	})
 }
 
-func executeCommands(t *testing.T, ctx *context, cmds [][]string) {
+func executeCommands(t *testing.T, ctx *context, cmds [][]string, ignoreUnexpectedLines bool) {
 	nGoroutinesBefore := runtime.NumGoroutine()
 	for _, cmd := range cmds {
 		exec(t, ctx, cmd)
 	}
-	// The "watch after logrotate" test watches logdir/* and rotates logdir/logfile.log
-	// to logdir/logfile.log.1. As a result, the file is still watched after it is rotated.
-	// Depending on the logrotate config the lines are read again (cp) or not (mv).
-	// We ignore unexpected lines for that test.
-	// TODO: Make ignoreUnexpectedLines an explicit paramter in the test yaml instead of using the test name here.
-	closeTailer(t, ctx, ctx.testName == "watch after logrotate")
+	closeTailer(t, ctx, ignoreUnexpectedLines)
 	assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
 	for _, writer := range ctx.logFileWriters {
 		writer.close(t, ctx)
@@ -562,8 +571,12 @@ func createFromTemp(t *testing.T, ctx *context, from string) {
 		fatalf(t, ctx, "failed to close temporary log file %v: %v", tmpFile.Name(), err.Error())
 	}
 
-	// Add small delay to let filesystem events settle
-	time.Sleep(500 * time.Millisecond)
+	// Add a small delay so the tailer observes the filesystem events for the
+	// temp file before it is renamed to the logfile. The tailer re-syncs the
+	// directory state on every event, so 100ms is enough; this used to be 500ms,
+	// which added up across the create_from_temp subtests and dominated the
+	// TestAll runtime.
+	time.Sleep(100 * time.Millisecond)
 
 	err = os.Rename(tmpFilename, fromPath)
 	if err != nil {
