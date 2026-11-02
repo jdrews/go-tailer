@@ -22,7 +22,8 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
-          cache: golang
+          cache: true
+          cache-dependency-path: go.sum
 
       - name: Cross-compile (windows/amd64)
         run: GOOS=windows GOARCH=amd64 go build ./...
@@ -60,7 +61,8 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
-          cache: golang
+          cache: true
+          cache-dependency-path: go.sum
 
       - name: Build
         run: go build -v ./...
