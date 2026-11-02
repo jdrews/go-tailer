@@ -54,15 +54,16 @@ func (b *lineBufferImpl) Push(line *fswatcher.Line) {
 	}
 }
 
-// Interrupted by Close(), returns nil when Close() is called.
+// Interrupted by Close(): once the buffer is closed, the lines that are still
+// in the buffer are delivered first, and nil is returned only when the buffer
+// is closed AND empty. Without the drain, a consumer that is briefly busy
+// (e.g. delivering a line to a slow receiver) can lose the remaining lines
+// when the producer closes the buffer at the end of the stream.
 func (b *lineBufferImpl) BlockingPop() *fswatcher.Line {
 	b.lock.L.Lock()
 	defer b.lock.L.Unlock()
-	if !b.closed {
-		for b.buffer.Len() == 0 && !b.closed {
-			b.lock.Wait()
-		}
-		if !b.closed {
+	for {
+		if b.buffer.Len() > 0 {
 			first := b.buffer.Front()
 			b.buffer.Remove(first)
 			switch line := first.Value.(type) {
@@ -73,8 +74,11 @@ func (b *lineBufferImpl) BlockingPop() *fswatcher.Line {
 				logFatal.Fatal("unexpected type in tailer b.buffer")
 			}
 		}
+		if b.closed {
+			return nil
+		}
+		b.lock.Wait()
 	}
-	return nil
 }
 
 func (b *lineBufferImpl) Close() error {

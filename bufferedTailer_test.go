@@ -164,12 +164,80 @@ func TestLineBufferParallel_withMetrics(t *testing.T) {
 // peakLoadMetric is a test double for BufferLoadMetric.
 // Start/Inc are called by the buffered tailer's producer goroutine and
 // Dec/Stop by other goroutines, so all state is guarded by mu.
+// Tests the maxLinesInBuffer > 0 path: when the buffer reaches the limit,
+// its contents are dropped (metric.Set(0)) and only the newest lines survive.
+// The exact set of surviving lines depends on scheduling (how many lines the
+// consumer managed to pop before the first drop), so this test asserts
+// scheduling-independent invariants instead of an exact sequence.
+func TestBufferedTailerDropsLinesWhenBufferFull(t *testing.T) {
+	const (
+		nLines           = 20
+		maxLinesInBuffer = 5
+	)
+	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
+	metric := &peakLoadMetric{}
+	buffered := BufferedTailerWithMetrics(src, metric, log, maxLinesInBuffer)
+
+	// Produce all lines without reading from the buffered tailer. The consumer
+	// goroutine can deliver at most one line before it blocks on the unread
+	// out channel, so the buffer fills up and lines are dropped.
+	for i := 1; i <= nLines; i++ {
+		src.lines <- &fswatcher.Line{Line: fmt.Sprintf("line %v", i)}
+	}
+	src.Close()
+
+	var delivered []string
+	for line := range buffered.Lines() {
+		delivered = append(delivered, line.Line)
+	}
+
+	if n := metric.SetCalls(); n < 1 {
+		t.Errorf("metric.Set(0) was called %v times, expected at least 1 (no lines were dropped)", n)
+	}
+	if len(delivered) >= nLines {
+		t.Errorf("got %v lines, expected fewer than %v because lines must be dropped", len(delivered), nLines)
+	}
+	if len(delivered) < 1 {
+		t.Fatalf("got no lines at all")
+	}
+	// The delivered lines must be a strictly increasing subsequence of the
+	// produced lines: no reordering, no duplicates.
+	for i, line := range delivered {
+		var n int
+		if _, err := fmt.Sscanf(line, "line %v", &n); err != nil {
+			t.Fatalf("delivered line %q is not in the expected format", line)
+		}
+		if i > 0 && n <= parsedLine(delivered[i-1]) {
+			t.Errorf("delivered lines are not strictly increasing: %v", delivered)
+		}
+	}
+	// The last produced line is the last one in the buffer, and the buffer is
+	// only cleared before a push, so it must always survive.
+	if delivered[len(delivered)-1] != fmt.Sprintf("line %v", nLines) {
+		t.Errorf("last delivered line = %q, want %q", delivered[len(delivered)-1], fmt.Sprintf("line %v", nLines))
+	}
+	// The drop logic must keep the buffer at or below the limit.
+	if peak := metric.PeakLoad(); peak > maxLinesInBuffer {
+		t.Errorf("peak load = %v, expected at most %v", peak, maxLinesInBuffer)
+	}
+	if !waitFor(metric.StopCalled) {
+		t.Error("metric.Stop() not called.")
+	}
+}
+
+func parsedLine(line string) int {
+	var n int
+	fmt.Sscanf(line, "line %v", &n)
+	return n
+}
+
 type peakLoadMetric struct {
 	mu          sync.Mutex
 	startCalled bool
 	stopCalled  bool
 	peakLoad    int64
 	currentLoad int64
+	setCalls    int
 }
 
 func (m *peakLoadMetric) Start() {
@@ -197,6 +265,7 @@ func (m *peakLoadMetric) Set(value int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.currentLoad = value
+	m.setCalls++
 }
 
 func (m *peakLoadMetric) Stop() {
@@ -223,4 +292,10 @@ func (m *peakLoadMetric) PeakLoad() int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.peakLoad
+}
+
+func (m *peakLoadMetric) SetCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setCalls
 }
